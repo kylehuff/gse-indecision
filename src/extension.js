@@ -432,6 +432,9 @@ indecisionApplet.prototype = {
     },
 
     _updateHiddenSubMenu: function() {
+        if (this.hiddenSubMenu.menu.isOpen)
+            return;
+
         this.hiddenSubMenu.menu.removeAll();
         let panelChildren = _getAllPanelChildren();
 
@@ -481,11 +484,19 @@ indecisionApplet.prototype = {
                     extensionObject.remove_style_class_name('highlight-indicator');
                 })
             );
+            // Disconnect the signal stored in _activateId, as it closes the
+            //  menu when we don't want to
             combo.disconnect(combo._activateId);
+            // Without populating the _activateId with a valid signal
+            //  connection, when the item is destroyed, it can cause
+            //  an error within signals.js
+            combo._activateId = combo.connect('dummy-event', function() {});
         }
     },
 
     _updateExtensionSubMenu: function() {
+        if (this.extSubMenu.menu.isOpen)
+            return;
         let _extensionMeta = Main.shellDBusService.ListExtensions();
         let _sortedExtensionObj = {};
 
@@ -530,7 +541,13 @@ indecisionApplet.prototype = {
                 })
             );
             this.extSubMenu.menu.addMenuItem(enableCombo);
+            // Disconnect the signal stored in _activateId, as it closes the
+            //  menu when we don't want to
             enableCombo.disconnect(enableCombo._activateId);
+            // Without populating the _activateId with a valid signal
+            //  connection, when the item is destroyed, it can cause
+            //  an error within signals.js
+            enableCombo._activateId = enableCombo.connect('dummy-event', function() {});
         }
     },
 
