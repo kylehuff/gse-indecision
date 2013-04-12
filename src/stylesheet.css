@@ -1,0 +1,40 @@
+.dnd-border-left {
+    border-left: 2px !important;
+    border-color: #fff !important;
+}
+
+.dnd-border-right {
+    border-right: 2px !important;
+    border-color: #fff !important;
+}
+
+.panel-reactive {
+    border: 1px solid #f00;
+    min-width: 200px;
+}
+
+.highlight-indicator {
+    border: 1px solid #f00;
+}
+
+.action-panel {
+    height: 100px;
+    border: 1px;
+    border-color: #f00;
+    border-radius: 5px;
+    background-color: rgba(10, 10, 10, 0.8);
+    padding: 4px;
+    padding-right: 8px;
+}
+
+.action-panel-icon {
+    color: #fff;
+    padding: 4px;
+}
+
+.action-panel-text {
+    font-size: 16px;
+    font-weight: bold;
+    color: #fff;
+    background-color: transparent;
+}

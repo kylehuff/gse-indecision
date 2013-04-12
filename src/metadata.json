@@ -1,0 +1,8 @@
+{
+    "shell-version": ["3.2.2.1"],
+    "uuid": "indecision@curetheitch.com",
+    "name": "Indecision for GNOME Shell",
+    "description": "Drag-n-Drop indicators within the GNOME shell panel and hide indicators",
+    "url": "https://github.com/kylehuff/gse-indecision",
+    "version": 1
+}
