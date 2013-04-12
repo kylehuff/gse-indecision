@@ -795,11 +795,9 @@ function enable() {
 function disable() {
     delete this._config.restart;
     this._settings.save_config(this._config);
-    new PromptUserRestart().open();
-    delete Main.panel._rightBox.get_parent()._delegate.acceptDrop;
-    this._indecisionApplet.actor.get_parent().remove_actor(this._indecisionApplet.actor);
     Main.statusIconDispatcher = StatusIconDispatcherOrig;
-    Main.statusIconDispatcher.start(Main.messageTray.actor);
     Main.ExtensionSystem._signals.disconnect(this._extLoadedEventId);
-    Main.ExtensionSystem._signals.disconnect(this._extStateChangedEventId);
+    this._indecisionApplet.actor.get_parent().remove_actor(this._indecisionApplet.actor);
+    delete Main.panel._rightBox.get_parent()._delegate.acceptDrop;
+    new PromptUserRestart().open();
 }
