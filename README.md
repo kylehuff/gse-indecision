@@ -6,10 +6,6 @@ The extension stores a state file, which is used on startup to arrange indicator
 
 This extension also provides a menu for disabling/enabling installed extensions for easy access.
 
-Documentation
-=============
-Documentation and Class reference can be found here: http://webpg.org/docs/webpg-npapi/
-
 Prerequisites
 =============
 GNOME Shell
