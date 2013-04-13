@@ -1,5 +1,5 @@
 {
-    "shell-version": ["3.2.2.1"],
+    "shell-version": ["3.2.2.1", "3.4.1"],
     "uuid": "indecision@curetheitch.com",
     "name": "Indecision for GNOME Shell",
     "description": "Drag-n-Drop indicators within the GNOME shell panel and hide indicators",

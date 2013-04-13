@@ -94,7 +94,10 @@ let _arrangePanelItem = function(panelItem, extName) {
 
                     default:
                         panelItem.get_parent().remove_actor(panelItem);
-                        targetPanel.insert_actor(panelItem, position);
+                        if (targetPanel.insert_actor!=undefined)
+                            targetPanel.insert_actor(panelItem, position);
+                        else
+                            targetPanel.insert_child_at_index(panelItem, position);
                         break;
                 }
             }
@@ -210,8 +213,8 @@ let _onDragMotion = function(dragEvent) {
             }
         } else {
             // Possibly over our action panel
-            if (dragEvent.targetActor._delegate instanceof actionPanel
-            || dragEvent.targetActor.get_parent()._delegate instanceof actionPanel) {
+            if (dragEvent.targetActor.get_parent() && (dragEvent.targetActor._delegate instanceof actionPanel
+            || dragEvent.targetActor.get_parent()._delegate instanceof actionPanel)) {
                 insertPosition = -2;
             }
         }
@@ -246,7 +249,7 @@ let _onDragEnd = function(draggable, time, snapback) {
         let extName = _getExtUUIDByPanelObject(dragActor);
         if (extName) {
             if (insertPosition > -1)
-                _state = JSON.parse(arrangeItem(insertPosition, dragActorTarget.name));
+                _state = JSON.parse(_arrangeItem(insertPosition, dragActorTarget.name));
 
             _state[extName] = {
                 'panel': dragActorTarget.name,
@@ -273,7 +276,10 @@ let _onDragEnd = function(draggable, time, snapback) {
             default:
                 // Move the element
                 dragActor.get_parent().remove_actor(dragActor);
-                dragActorTarget.insert_actor(dragActor, insertPosition);
+                if (dragActorTarget.insert_actor!=undefined)
+                    dragActorTarget.insert_actor(dragActor, insertPosition);
+                else
+                    dragActorTarget.insert_child_at_index(dragActor, insertPosition);
                 break;
         }
     } else {
@@ -301,7 +307,7 @@ let _dragMonitor = {
         panelItemPosition - <int> The position specified
         panelName - <string> The target panel name
 */
-let arrangeItem = function(position, panelName) {
+let _arrangeItem = function(position, panelName) {
     let stringState = JSON.stringify(_state);
 
     let places = stringState.match(
@@ -339,12 +345,18 @@ let arrangeItem = function(position, panelName) {
         panelItem - <panel actor object> The panel item
 */
 let _getExtUUIDByPanelObject = function (panelItem) {
-    let extObjs = Main.ExtensionSystem.extensionStateObjs;
+    let extObjs = (Main.ExtensionSystem.hasOwnProperty('extensionStateObjs'))
+        ? Main.ExtensionSystem.extensionStateObjs
+        : Main.ExtensionSystem.ExtensionUtils.extensions;
+
     for (let ext in extObjs) {
-        let objKeys = Object.keys(extObjs[ext]);
+        let extObj = (Main.ExtensionSystem.hasOwnProperty('extensionStateObjs'))
+            ? extObjs[ext] : extObjs[ext].stateObj;
+        let objKeys = Object.keys(extObj);
+
         for (let i = 0, len = objKeys.length; i < len; i++) {
-            if ((extObjs[ext][objKeys[i]] == panelItem
-            || extObjs[ext][objKeys[i]] == panelItem._delegate)
+            if ((extObj[objKeys[i]] == panelItem
+            || extObj[objKeys[i]] == panelItem._delegate)
             && objKeys[i] != 'dragActor'
             && objKeys[i] != 'dragTarget')
                 return ext;
@@ -366,7 +378,21 @@ let _getExtUUIDByPanelObject = function (panelItem) {
             delegateKeyName += "@shelltrayindicator";
         }
     } else {
-        return null;
+        let objName = panelItem._delegate.toString().replace(/\[\w+\s(.*?)\]/gim, "$1");
+        if (panelItem._delegate.toString().indexOf(objName) > -1)
+            return objName + "@shellindicator";
+
+        // Used as the extension/object name when the item is not an
+        //  an extension or indicator (i.e. the activities menu), and
+        //  cannot otherwise be determined
+        let randomID = "";
+        for (let objKey in panelItem._delegate) {
+            // Convert the objKey to a string
+            objString = objKey.toString();
+            // Take a portion of that string and use it for our randomID
+            randomID += objString.substring(objString.length / 2, (objString.length / 2) + 1);
+        }
+        return randomID + "@shellindicator";
     }
 
     return delegateKeyName.toLowerCase();
@@ -395,7 +421,7 @@ indecisionApplet.prototype = {
         this._icon.height = PANEL_ICON_SIZE;
         this.actor.add_actor(this._icon);
         
-        this.configSubMenu = new PopupMenu.PopupSubMenuMenuItem("Settings");
+        this._configSubMenu = new PopupMenu.PopupSubMenuMenuItem("Settings");
         
         let combo = new PopupMenu.PopupSwitchMenuItem(
             "Move Tray Icons to Panel", (_config && _config['trayIcons'])
@@ -416,26 +442,28 @@ indecisionApplet.prototype = {
                 }
             })
         );
-        this.configSubMenu.menu.addMenuItem(combo);
+        this._configSubMenu.menu.addMenuItem(combo);
+        this._getExtUUIDByPanelObject = _getExtUUIDByPanelObject;
+        this._getAllPanelChildren = _getAllPanelChildren;
 
-        this.hiddenSubMenu = new PopupMenu.PopupSubMenuMenuItem("Indicators");
-        this.hiddenSubMenu.actor.connect('button-press-event', Lang.bind(this, this._updateHiddenSubMenu));
-        this.extSubMenu = new PopupMenu.PopupSubMenuMenuItem("Extensions");
-        this.extSubMenu.actor.connect('button-press-event', Lang.bind(this, this._updateExtensionSubMenu));
+        this._hiddenSubMenu = new PopupMenu.PopupSubMenuMenuItem("Indicators");
+        this._hiddenSubMenu.actor.connect('button-press-event', Lang.bind(this, this._updateHiddenSubMenu));
+        this._extSubMenu = new PopupMenu.PopupSubMenuMenuItem("Extensions");
+        this._extSubMenu.actor.connect('button-press-event', Lang.bind(this, this._updateExtensionSubMenu));
 
-        this.menu.addMenuItem(this.configSubMenu);
-        this.menu.addMenuItem(this.hiddenSubMenu);
-        this.menu.addMenuItem(this.extSubMenu);
+        this.menu.addMenuItem(this._configSubMenu);
+        this.menu.addMenuItem(this._hiddenSubMenu);
+        this.menu.addMenuItem(this._extSubMenu);
         Main.panel._menus.addMenu(this.menu);
         Main.panel._insertStatusItem(this.actor, 0);
         Main.panel._statusArea['indecision'] = this;
     },
 
     _updateHiddenSubMenu: function() {
-        if (this.hiddenSubMenu.menu.isOpen)
+        if (this._hiddenSubMenu.menu.isOpen)
             return;
 
-        this.hiddenSubMenu.menu.removeAll();
+        this._hiddenSubMenu.menu.removeAll();
         let panelChildren = _getAllPanelChildren();
 
         // Iterate through the panel items
@@ -444,10 +472,18 @@ indecisionApplet.prototype = {
             let extensionObject = panelChildren[i];
             if (!extensionObject)
                 return;
+
             let UUID = _getExtUUIDByPanelObject(extensionObject);
-            let extension = Main.ExtensionSystem.extensionMeta[UUID];
+
+            let extension = (Main.ExtensionSystem.hasOwnProperty('extensionMeta'))
+                ? Main.ExtensionSystem.extensionMeta[UUID]
+                : (Main.ExtensionSystem.ExtensionUtils.extensions[UUID] != undefined)
+                    ? Main.ExtensionSystem.ExtensionUtils.extensions[UUID].metadata
+                    : null;
+
             if (!extension)
                 extension = { 'name': UUID };
+
             let hidden = (_state[UUID] && _state[UUID].position < 0)
             let combo = new PopupMenu.PopupSwitchMenuItem(
                 extension.name, !hidden
@@ -455,13 +491,13 @@ indecisionApplet.prototype = {
             combo.connect('toggled', Lang.bind(this,
                 function(item, state) {
                     if (state) {
-                        Main.notify("Restoring " + extension.name);
+                        Main.notify("Restoring: " + extension.name);
                         delete _state[UUID];
                         _settings.save_state(_state);
                         extensionObject.show();
                         Main.ExtensionSystem._signals.emit('extension-loaded', extension);
                      } else {
-                        Main.notify("Hiding " + extension.name);
+                        Main.notify("Hiding: " + extension.name);
                         _state[UUID] = {
                             panel: 'panelRight',
                             position: -2
@@ -472,7 +508,7 @@ indecisionApplet.prototype = {
                      extensionObject.remove_style_class_name('highlight-indicator');
                 })
             );
-            this.hiddenSubMenu.menu.addMenuItem(combo);
+            this._hiddenSubMenu.menu.addMenuItem(combo);
             combo.actor.set_reactive(true);
             combo.actor.connect('enter-event', Lang.bind(this,
                 function() {
@@ -489,64 +525,80 @@ indecisionApplet.prototype = {
             combo.disconnect(combo._activateId);
             // Without populating the _activateId with a valid signal
             //  connection, when the item is destroyed, it can cause
-            //  an error within signals.js
+            //  an error within signals.js in gnome-shell v3.2.2.1
             combo._activateId = combo.connect('dummy-event', function() {});
         }
     },
 
     _updateExtensionSubMenu: function() {
-        if (this.extSubMenu.menu.isOpen)
+        if (this._extSubMenu.menu.isOpen)
             return;
         let _extensionMeta = Main.shellDBusService.ListExtensions();
         let _sortedExtensionObj = {};
 
         Object.keys(_extensionMeta).map(
             function(key) {
-                _sortedExtensionObj[_extensionMeta[key].name.toLowerCase()] = _extensionMeta[key];
+                let name = (Main.ExtensionSystem.hasOwnProperty('ExtensionUtils'))
+                    ? Main.ExtensionSystem.ExtensionUtils.extensions[key].metadata.name.toLowerCase()
+                    : _extensionMeta[key].name.toLowerCase();
+                _sortedExtensionObj[name] = _extensionMeta[key];
                 return key;
             }
         );
-        
+
         let _sortedExtensionList = Object.keys(_sortedExtensionObj).sort().map(function(key) {
-            return _sortedExtensionObj[key].uuid;
+                let uuid = _sortedExtensionObj[key].uuid;
+                if (typeof(uuid)!='string')
+                    uuid = uuid.get_string()[0];
+                return uuid;
         })
 
-        this.extSubMenu.menu.removeAll();
+        this._extSubMenu.menu.removeAll();
         for (let i = 0, len = _sortedExtensionList.length, UUID; UUID = _sortedExtensionList[i], i < len; i++) {
-            let extension = _extensionMeta[UUID];
-            if (!extension || !extension.name)
+            let extension = (Main.ExtensionSystem.hasOwnProperty('ExtensionUtils'))
+                ? Main.ExtensionSystem.ExtensionUtils.extensions[UUID]
+                : _extensionMeta[UUID];
+            if (!extension)
                 continue;
+            let name = (extension.hasOwnProperty('metadata')) ? extension.metadata.name : extension.name;
             let enableCombo = new PopupMenu.PopupSwitchMenuItem(
-                extension.name, extension.state === 1
+                name, extension.state === 1
             );
             enableCombo.connect('toggled', Lang.bind(this,
                 function(item, state) {
-                    let actor = Main.ExtensionSystem.extensionStateObjs[extension.uuid].actor;
-                    if (actor && convertedItems.indexOf(actor._delegate) > -1)
-                        convertedItems.pop(actor._delegate);
+//TODO: reliable method for getting the actor of the given extension
+//                    let actor = (Main.ExtensionSystem.hasOwnProperty('extensionStateObjs'))
+//                        ? Main.ExtensionSystem.extensionStateObjs[UUID].actor
+//                        : Main.ExtensionSystem.ExtensionUtils.extensions[UUID].stateObj;
+//                    if (actor && convertedItems.indexOf(actor._delegate) > -1)
+//                        convertedItems.pop(actor._delegate);
                     if (state) {
-                        Main.notify("Enabling: " + extension.name);
+                        Main.notify("Enabling: " + name);
                         Main.shellDBusService.EnableExtension(extension.uuid);
                         _reorderIcons();
                     } else {
-                        Main.notify("Disabling: " + extension.name);
+                        Main.notify("Disabling: " + name);
                         Main.shellDBusService.DisableExtension(extension.uuid);
                         try {
-                            Main.ExtensionSystem.extensionStateObjs[extension.uuid].disable();
-                            actor.destroy();
+                            let ext = (Main.ExtensionSystem.hasOwnProperty('extensionStateObjs'))
+                                ? Main.ExtensionSystem.extensionStateObjs[extension.uuid]
+                                : Main.ExtensionSystem.ExtensionUtils.extensions[extension.uuid].stateObj;
+                            ext.disable();
+// TODO: reliable method for getting the actor of the given extension
+//                            actor.destroy();
                         } catch (err) {
                         }
                     }
                     _reorderIcons();
                 })
             );
-            this.extSubMenu.menu.addMenuItem(enableCombo);
+            this._extSubMenu.menu.addMenuItem(enableCombo);
             // Disconnect the signal stored in _activateId, as it closes the
             //  menu when we don't want to
             enableCombo.disconnect(enableCombo._activateId);
             // Without populating the _activateId with a valid signal
             //  connection, when the item is destroyed, it can cause
-            //  an error within signals.js
+            //  an error within signals.js in gnome-shell v3.2.2.1
             enableCombo._activateId = enableCombo.connect('dummy-event', function() {});
         }
     },
