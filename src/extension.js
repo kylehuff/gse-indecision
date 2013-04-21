@@ -7,7 +7,6 @@ License:    GNU General Public License, version 2
 
 Copyright 2013 Kyle L. Huff, CURETHEITCH development team
 \**********************************************************/
-const StatusIconDispatcherOrig = imports.ui.statusIconDispatcher;
 const Signals = imports.signals;
 const Lang = imports.lang;
 const St = imports.gi.St;
@@ -19,10 +18,20 @@ const Clutter = imports.gi.Clutter;
 const PanelMenu = imports.ui.panelMenu;
 const PopupMenu = imports.ui.popupMenu;
 const ModalDialog   = imports.ui.modalDialog;
-const console = global;
+const UUID = "indecision@curetheitch.com";
 
 const PANEL_ICON_SIZE = Panel.PANEL_ICON_SIZE;
-const STANDARD_TRAY_ICON_IMPLEMENTATIONS = imports.ui.statusIconDispatcher.STANDARD_TRAY_ICON_IMPLEMENTATIONS;
+try {
+    const STANDARD_TRAY_ICON_IMPLEMENTATIONS = imports.ui.statusIconDispatcher.STANDARD_TRAY_ICON_IMPLEMENTATIONS;
+} catch (err) {
+    const STNADARD_TRAY_ICON_IMPLEMENTATIONS = imports.ui.notificationDaemon.STANDARD_TRAY_ICON_IMPLEMENTATIONS;
+}
+
+try {
+    const StatusIconDispatcherOrig = imports.ui.statusIconDispatcher;
+} catch (err) {
+    const notificationDaemon = imports.ui.notificationDaemon;
+}
 
 let convertedItems = [];
 let dragActor,
@@ -35,8 +44,11 @@ let targetPanels = [Main.panel._leftBox,
     Main.panel._rightBox];
 
 let _makeItemDraggable = function(panelItem, trayIcon) {
+    if (panelItem._delegate == undefined || panelItem._delegate instanceof St.Bin)
+        panelItem = panelItem.get_children()[0];
+
     // Enforce the _delegate
-    if (!panelItem.hasOwnProperty('_delegate'))
+    if (panelItem._delegate == undefined)
         panelItem._delegate = panelItem;
 
     // Assign the getDragActor method
@@ -47,7 +59,6 @@ let _makeItemDraggable = function(panelItem, trayIcon) {
         //  gets removed from the panel on drag, which we don't
         //  want because it will change the panel object count.
         return new St.Icon({ icon_name: 'system-run',
-                    icon_type: St.IconType.SYMBOLIC,
                     icon_size: 1,
                     style_class: 'system-status-icon' });
     }
@@ -142,7 +153,10 @@ let _onDragBegin = function(draggable, time) {
 
     // Attempt to close any menus that are open
     try {
-        for (menu in Main.panel._menus._menus) { Main.panel._menus._menus[menu].menu.close() }
+        let menus = (Main.panel.hasOwnProperty('_menus'))
+            ? Main.panel._menus
+            : Main.panel.menuManager._menus;
+        for (menu in menus) { menus[menu].menu.close() }
         Main.lookingGlass.close();
     } catch (err) {
         global.log(err.message);
@@ -275,7 +289,11 @@ let _onDragEnd = function(draggable, time, snapback) {
 
             default:
                 // Move the element
-                dragActor.get_parent().remove_actor(dragActor);
+                let removeParent = (dragActor.get_parent() instanceof St.Bin);
+                let dragActorParent = dragActor.get_parent();
+                dragActorParent.remove_actor(dragActor);
+                if (removeParent)
+                    dragActorParent.destroy();
                 if (dragActorTarget.insert_actor!=undefined)
                     dragActorTarget.insert_actor(dragActor, insertPosition);
                 else
@@ -319,7 +337,7 @@ let _arrangeItem = function(position, panelName) {
 
     if (places && places.indexOf(position) !== -1) {
         let iter = 0;
-        console.log("Already something at this position (" + position + "); shifting list");
+        global.log("Already something at this position (" + position + "); shifting list");
         stringState = stringState.replace(
             new RegExp("(" + panelName + ".*?position[\"|\']\:)(\\d+)", "gim"),
             function(s, m, g1) {
@@ -344,29 +362,45 @@ let _arrangeItem = function(position, panelName) {
     Parameters:
         panelItem - <panel actor object> The panel item
 */
-let _getExtUUIDByPanelObject = function (panelItem) {
+let _getExtUUIDByPanelObject = function(panelItem) {
+    let delegate = (panelItem.hasOwnProperty('_delegate') && !panelItem._delegate instanceof St.Bin)
+        ? panelItem._delegate
+        : panelItem.get_children()[0]._delegate;
+
+    if (delegate == undefined) 
+        delegate = panelItem._delegate;
+
+    if (!panelItem.hasOwnProperty('_delegate'))
+        panelItem = panelItem.get_children()[0];
+
     let extObjs = (Main.ExtensionSystem.hasOwnProperty('extensionStateObjs'))
         ? Main.ExtensionSystem.extensionStateObjs
         : Main.ExtensionSystem.ExtensionUtils.extensions;
 
     for (let ext in extObjs) {
         let extObj = (Main.ExtensionSystem.hasOwnProperty('extensionStateObjs'))
-            ? extObjs[ext] : extObjs[ext].stateObj;
+            ? extObjs[ext] : (extObjs[ext].hasOwnProperty('stateObj')) ? extObjs[ext].stateObj : {};
+
         let objKeys = Object.keys(extObj);
 
         for (let i = 0, len = objKeys.length; i < len; i++) {
             if ((extObj[objKeys[i]] == panelItem
+            || extObj[objKeys[i]] == delegate
             || extObj[objKeys[i]] == panelItem._delegate)
             && objKeys[i] != 'dragActor'
             && objKeys[i] != 'dragTarget')
                 return ext;
         }
     }
+    let statusArea = (Main.panel.hasOwnProperty('_statusArea'))
+        ? Main.panel._statusArea : Main.panel.statusArea;
+
     for (let statusItem in Main.panel._statusArea) {
         if (Main.panel._statusArea[statusItem]
         && Main.panel._statusArea[statusItem].actor == panelItem)
             return statusItem + "@shellindicator";
     }
+
     let delegateKeyName = "";
 
     if (panelItem.get_children().toString().indexOf("ShellTrayIcon") > -1) {
@@ -378,15 +412,15 @@ let _getExtUUIDByPanelObject = function (panelItem) {
             delegateKeyName += "@shelltrayindicator";
         }
     } else {
-        let objName = panelItem._delegate.toString().replace(/\[\w+\s(.*?)\]/gim, "$1");
-        if (panelItem._delegate.toString().indexOf(objName) > -1)
+        let objName = delegate.toString().replace(/\[\w+\s(.*?)\]/gim, "$1");
+        if (delegate.toString().indexOf(objName) > -1)
             return objName + "@shellindicator";
 
         // Used as the extension/object name when the item is not an
         //  an extension or indicator (i.e. the activities menu), and
         //  cannot otherwise be determined
         let randomID = "";
-        for (let objKey in panelItem._delegate) {
+        for (let objKey in delegate) {
             // Convert the objKey to a string
             objString = objKey.toString();
             // Take a portion of that string and use it for our randomID
@@ -454,9 +488,17 @@ indecisionApplet.prototype = {
         this.menu.addMenuItem(this._configSubMenu);
         this.menu.addMenuItem(this._hiddenSubMenu);
         this.menu.addMenuItem(this._extSubMenu);
-        Main.panel._menus.addMenu(this.menu);
-        Main.panel._insertStatusItem(this.actor, 0);
-        Main.panel._statusArea['indecision'] = this;
+        let menuManager = (Main.panel.hasOwnProperty('_menus'))
+            ? Main.panel._menus
+            : Main.panel.menuManager;
+        menuManager.addMenu(this.menu);
+        if (Main.panel.hasOwnProperty('_insertStatusItem')) {
+            Main.panel._insertStatusItem(this.actor, 0);
+            Main.panel._statusArea['indecision@curetheitch.com'] = this;
+        } else {
+            Main.panel.addToStatusArea(UUID, this, 0);
+        }
+        
     },
 
     _updateHiddenSubMenu: function() {
@@ -533,7 +575,14 @@ indecisionApplet.prototype = {
     _updateExtensionSubMenu: function() {
         if (this._extSubMenu.menu.isOpen)
             return;
-        let _extensionMeta = Main.shellDBusService.ListExtensions();
+        let _extensionMeta;
+        if (Main.shellDBusService.ListExtensions != undefined)
+            _extensionMeta = Main.shellDBusService.ListExtensions();
+        else if (Main.shellDBusService.hasOwnProperty('_extensionsSerivce'))
+            _extensionMeta = Main.shellDBusService._extensionsSerivce.ListExtensions();
+        else
+            _extensionMeta = Main.shellDBusService._extensionsService.ListExtensions();
+
         let _sortedExtensionObj = {};
 
         Object.keys(_extensionMeta).map(
@@ -572,21 +621,41 @@ indecisionApplet.prototype = {
 //                        : Main.ExtensionSystem.ExtensionUtils.extensions[UUID].stateObj;
 //                    if (actor && convertedItems.indexOf(actor._delegate) > -1)
 //                        convertedItems.pop(actor._delegate);
+                    let ENABLED_EXTENSIONS_KEY = Main.ExtensionSystem.ENABLED_EXTENSIONS_KEY;
                     if (state) {
                         Main.notify("Enabling: " + name);
-                        Main.shellDBusService.EnableExtension(extension.uuid);
+                        if (Main.shellDBusService.hasOwnProperty('EnableExtension')) {
+                            Main.shellDBusService.EnableExtension(extension.uuid);
+                        } else {
+                            let settings = new Gio.Settings({schema: 'org.gnome.shell'});
+                            let extensions = settings.get_strv(ENABLED_EXTENSIONS_KEY);
+
+                            if (extensions.indexOf(extension.uuid) == -1)
+                                extensions.push(extension.uuid);
+
+                            settings.set_strv(ENABLED_EXTENSIONS_KEY, extensions);
+                        }
                         _reorderIcons();
                     } else {
                         Main.notify("Disabling: " + name);
-                        Main.shellDBusService.DisableExtension(extension.uuid);
-                        try {
-                            let ext = (Main.ExtensionSystem.hasOwnProperty('extensionStateObjs'))
-                                ? Main.ExtensionSystem.extensionStateObjs[extension.uuid]
-                                : Main.ExtensionSystem.ExtensionUtils.extensions[extension.uuid].stateObj;
-                            ext.disable();
-// TODO: reliable method for getting the actor of the given extension
-//                            actor.destroy();
-                        } catch (err) {
+                        if (Main.shellDBusService.hasOwnProperty('DisableExtension')) {
+                            Main.shellDBusService.DisableExtension(extension.uuid);
+                            try {
+                                let ext = (Main.ExtensionSystem.hasOwnProperty('extensionStateObjs'))
+                                    ? Main.ExtensionSystem.extensionStateObjs[extension.uuid]
+                                    : Main.ExtensionSystem.ExtensionUtils.extensions[extension.uuid].stateObj;
+                                ext.disable();
+                            } catch (err) {
+                            }
+                        } else {
+                            Main.ExtensionSystem.disableExtension(extension.uuid);
+                            let settings = new Gio.Settings({schema: 'org.gnome.shell'});
+                            let extensions = settings.get_strv(ENABLED_EXTENSIONS_KEY);
+
+                            while (extensions.indexOf(extension.uuid) != -1)
+                                extensions.splice(extensions.indexOf(extension.uuid), 1);
+
+                            settings.set_strv(ENABLED_EXTENSIONS_KEY, extensions);
                         }
                     }
                     _reorderIcons();
@@ -697,7 +766,7 @@ SettingsManager.prototype = {
     }
 }
 
-function StatusIconDispatcher() {
+/*function StatusIconDispatcher() {
     this._init();
 }
 
@@ -760,7 +829,7 @@ StatusIconDispatcher.prototype = {
     }
 };
 
-Signals.addSignalMethods(StatusIconDispatcher.prototype);
+Signals.addSignalMethods(StatusIconDispatcher.prototype);*/
 
 function actionPanel(app) {
 	this._init(app);
@@ -827,17 +896,16 @@ function enable() {
         return true;
     }
 
-    if (this._config && this._config['trayIcons']) {
+/*    if (this._config && this._config['trayIcons']) {
         // Override the statusIconDispatcher
         this._indecisionApplet._overrideStatusIconDispatcher();
     }
+*/
 
     // Listen for changes to extension states
     this._extLoadedEventId = Main.ExtensionSystem._signals.connect('extension-loaded', Lang.bind(this, this._reorderIcons));
 
-    if (this._config.restart == undefined || this._config.restart == true) {
-        this._config.restart = false;
-        this._settings.save_config(this._config);
+    if (this._config && this._config['trayIcons']) {
         new PromptUserRestart().open();
     } else {
         _reorderIcons();
@@ -847,7 +915,7 @@ function enable() {
 function disable() {
     delete this._config.restart;
     this._settings.save_config(this._config);
-    Main.statusIconDispatcher = StatusIconDispatcherOrig;
+    //Main.statusIconDispatcher = StatusIconDispatcherOrig;
     Main.ExtensionSystem._signals.disconnect(this._extLoadedEventId);
     this._indecisionApplet.actor.get_parent().remove_actor(this._indecisionApplet.actor);
     delete Main.panel._rightBox.get_parent()._delegate.acceptDrop;
