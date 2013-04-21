@@ -153,8 +153,8 @@ let _onDragBegin = function(draggable, time) {
 
     // Attempt to close any menus that are open
     try {
-        let menus = (Main.panel.hasOwnProperty('_menus'))
-            ? Main.panel._menus
+        let menus = (Main.panel._menus != undefined)
+            ? Main.panel._menus._menus
             : Main.panel.menuManager._menus;
         for (menu in menus) { menus[menu].menu.close() }
         Main.lookingGlass.close();
@@ -403,11 +403,12 @@ let _getExtUUIDByPanelObject = function(panelItem) {
 
     let delegateKeyName = "";
 
-    if (panelItem.get_children().toString().indexOf("ShellTrayIcon") > -1) {
+    if (panelItem.get_children != undefined && panelItem.get_children().toString().indexOf("ShellTrayIcon") > -1) {
         try {
             delegateKeyName = panelItem.get_children()[0]._role.toLowerCase();
         } catch (err) {
             // Use the calculated name for the icon (yet TODO)
+            delegateKeyName = "unknown-trayicon";
         } finally {
             delegateKeyName += "@shelltrayindicator";
         }
@@ -488,7 +489,7 @@ indecisionApplet.prototype = {
         this.menu.addMenuItem(this._configSubMenu);
         this.menu.addMenuItem(this._hiddenSubMenu);
         this.menu.addMenuItem(this._extSubMenu);
-        let menuManager = (Main.panel.hasOwnProperty('_menus'))
+        let menuManager = (Main.panel._menus != undefined)
             ? Main.panel._menus
             : Main.panel.menuManager;
         menuManager.addMenu(this.menu);
