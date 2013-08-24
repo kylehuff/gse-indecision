@@ -16,3 +16,7 @@ I have only tested with GNOME Shell v3.2.2.1
 Installation
 =============
 No special installation instructions; installation is the same for any other GNOME Shell Extension
+
+
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/kylehuff/gse-indecision/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
+
